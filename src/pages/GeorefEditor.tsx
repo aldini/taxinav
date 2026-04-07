@@ -232,6 +232,7 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
           cursor: placing ? 'crosshair'
             : (gridPhase === 'lat-line' || gridPhase === 'lon-line') ? 'crosshair'
             : pdfPage ? 'grab' : 'default',
+          userSelect: 'none',
         }}
       >
         {/* Toolbar overlay */}

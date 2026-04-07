@@ -62,25 +62,38 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
     }
   }, [elRef])
 
-  // Mouse drag — use window-level handlers so drag continues outside the element
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (panPaused.current) return
-    e.preventDefault()
-    drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
+  // Mouse drag — native listener so preventDefault() reliably blocks text-selection
+  useEffect(() => {
+    const el = elRef.current
+    if (!el) return
 
-    const onMove = (ev: MouseEvent) => {
-      setPan(p => ({ x: p.x + (ev.clientX - drag.current.sx), y: p.y + (ev.clientY - drag.current.sy) }))
-      drag.current.sx = ev.clientX
-      drag.current.sy = ev.clientY
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return
+      if (panPaused.current) return
+      e.preventDefault() // native: reliably stops text selection / drag-image
+
+      drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
+
+      const onMove = (ev: MouseEvent) => {
+        setPan(p => ({ x: p.x + (ev.clientX - drag.current.sx), y: p.y + (ev.clientY - drag.current.sy) }))
+        drag.current.sx = ev.clientX
+        drag.current.sy = ev.clientY
+      }
+      const onUp = () => {
+        drag.current.on = false
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
     }
-    const onUp = () => {
-      drag.current.on = false
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [])
+
+    el.addEventListener('mousedown', onMouseDown)
+    return () => el.removeEventListener('mousedown', onMouseDown)
+  }, [elRef])
+
+  // Dummy React prop — kept so callers don't break, but does nothing
+  const onMouseDown = useCallback((_e: React.MouseEvent) => {}, [])
 
   /** Returns true if the most recent mousedown→mouseup moved more than 5px */
   const hasDragged = useCallback(() =>
