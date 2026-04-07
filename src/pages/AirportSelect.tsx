@@ -148,18 +148,20 @@ export function AirportSelect({ onSelect }: Props) {
 const S = {
   input: {
     flex: 1, width: '100%',
-    padding: '10px 14px',
+    padding: '13px 16px',
     border: '1.5px solid #E2E8F0',
-    borderRadius: 8, fontSize: 14,
+    borderRadius: 10, fontSize: 16,
     color: '#334155', background: 'white',
     outline: 'none', fontFamily: 'Outfit, sans-serif',
+    minHeight: 48,
   } as React.CSSProperties,
 
   primary: {
-    padding: '10px 18px', borderRadius: 8,
+    padding: '12px 20px', borderRadius: 10,
     border: 'none', background: '#2563EB', color: 'white',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
     fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap' as const,
+    minHeight: 48,
   } as React.CSSProperties,
 
   card: {

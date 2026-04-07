@@ -1,19 +1,44 @@
-interface AircraftProps {
+interface Props {
   heading?: number
-  size?: number
-  color?: string
+  live?: boolean   // shows pulse animation when GPS is live
 }
 
-export function Aircraft({ heading = 0, size = 36, color = '#2563EB' }: AircraftProps) {
+/** Simple position dot with optional heading indicator and pulse */
+export function Aircraft({ heading = 0, live = false }: Props) {
+  const showHeading = heading !== 0
+
   return (
-    <svg
-      width={size} height={size} viewBox="0 0 32 32" fill="none"
-      style={{ transform: `rotate(${heading}deg)`, filter: `drop-shadow(0 2px 6px ${color}88)` }}
-    >
-      <ellipse cx="16" cy="16" rx="3" ry="11" fill={color} />
-      <polygon points="16,14 2,22 4,23 16,17 28,23 30,22" fill={color} opacity=".9" />
-      <polygon points="16,26 10,30 22,30" fill={color} opacity=".8" />
-      <circle cx="16" cy="5" r="2.5" fill="white" />
-    </svg>
+    <div style={{ position: 'relative', width: 16, height: 16 }}>
+      {/* Pulse ring (live GPS only) */}
+      {live && <div className="gps-pulse" />}
+
+      {/* Heading line */}
+      {showHeading && (
+        <div style={{
+          position: 'absolute',
+          width: 3,
+          height: 20,
+          background: '#2563EB',
+          left: '50%',
+          bottom: '50%',
+          marginLeft: -1.5,
+          borderRadius: 2,
+          opacity: 0.85,
+          transformOrigin: 'bottom center',
+          transform: `rotate(${heading}deg)`,
+        }} />
+      )}
+
+      {/* Dot */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        borderRadius: '50%',
+        background: '#2563EB',
+        border: '3px solid white',
+        boxShadow: '0 0 0 2px #2563EB, 0 2px 10px rgba(37,99,235,0.55)',
+        zIndex: 2,
+      }} />
+    </div>
   )
 }

@@ -34,15 +34,22 @@ export async function loadPageFromFile(file: File): Promise<any> {
   return doc.getPage(1)
 }
 
-/** Render a PDF page to a canvas at the given scale (default 2 for retina) */
-export async function renderPage(
+/** Render a PDF page to a canvas — returns a cancellable task */
+export function renderPage(
   page: any,
   canvas: HTMLCanvasElement,
   scale = 2
-): Promise<{ w: number; h: number }> {
+): { promise: Promise<{ w: number; h: number }>; cancel: () => void } {
   const vp = page.getViewport({ scale })
   canvas.width = vp.width
   canvas.height = vp.height
-  await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise
-  return { w: vp.width, h: vp.height }
+  const ctx = canvas.getContext('2d')!
+  const task = page.render({ canvasContext: ctx, viewport: vp })
+  const promise = task.promise
+    .then(() => ({ w: vp.width, h: vp.height }))
+    .catch((e: any) => {
+      if (e?.name === 'RenderingCancelledException') return { w: vp.width, h: vp.height }
+      throw e
+    })
+  return { promise, cancel: () => task.cancel() }
 }

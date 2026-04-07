@@ -42,17 +42,28 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
   // Load PDF
   useEffect(() => {
     if (!chart.pdf_url) { setPdfError('Nessun PDF associato a questa chart'); setPdfLoading(false); return }
+    let active = true
+    let task: ReturnType<typeof renderPage> | null = null
     setPdfLoading(true); setPdfError('')
+
     loadPage(chart.pdf_url)
-      .then(async page => {
+      .then(page => {
+        if (!active || !cvRef.current) return
         setPdfPage(page)
-        if (cvRef.current) {
-          const { w, h } = await renderPage(page, cvRef.current)
-          setCanvasSize({ w, h })
-        }
+        task = renderPage(page, cvRef.current)
+        return task.promise
+      })
+      .then(size => {
+        if (!active || !size) return
+        setCanvasSize(size)
         setPdfLoading(false)
       })
-      .catch(e => { setPdfError(String(e)); setPdfLoading(false) })
+      .catch(e => {
+        if (!active) return
+        setPdfError(String(e)); setPdfLoading(false)
+      })
+
+    return () => { active = false; task?.cancel() }
   }, [chart.pdf_url])
 
   // Load existing GCPs from georef
@@ -181,10 +192,12 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
                 onClick={e => { e.stopPropagation(); setActiveIdx(i) }}
                 style={{ position: 'absolute', left: gcp.px, top: gcp.py, transform: 'translate(-50%,-50%)', cursor: 'pointer', zIndex: isActive ? 10 : 5 }}
               >
-                <div style={{ position: 'absolute', left: -20, top: -1, width: 40, height: 2, background: color, opacity: 0.8 }} />
-                <div style={{ position: 'absolute', top: -20, left: -1, width: 2, height: 40, background: color, opacity: 0.8 }} />
-                <div style={{ width: 14, height: 14, borderRadius: '50%', background: color, border: '3px solid white', boxShadow: `0 0 0 1.5px ${color}, 0 2px 8px ${color}88`, position: 'relative', zIndex: 2 }} />
-                <div style={{ position: 'absolute', left: 12, top: -18, background: 'white', color, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap', boxShadow: '0 1px 4px rgba(0,0,0,.15)', border: `1px solid ${color}44`, zIndex: 3 }}>
+                <div style={{ position: 'absolute', left: -24, top: -1, width: 48, height: 2, background: color, opacity: 0.8 }} />
+                <div style={{ position: 'absolute', top: -24, left: -1, width: 2, height: 48, background: color, opacity: 0.8 }} />
+                {/* Larger invisible tap target */}
+                <div style={{ position: 'absolute', width: 44, height: 44, top: -22, left: -22, borderRadius: '50%' }} />
+                <div style={{ width: 20, height: 20, borderRadius: '50%', background: color, border: '3px solid white', boxShadow: `0 0 0 2px ${color}, 0 2px 10px ${color}88`, position: 'relative', zIndex: 2 }} />
+                <div style={{ position: 'absolute', left: 16, top: -20, background: 'white', color, fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap', boxShadow: '0 1px 6px rgba(0,0,0,.18)', border: `1px solid ${color}44`, zIndex: 3 }}>
                   {gcp.label || `GCP ${i + 1}`}
                 </div>
               </div>
@@ -303,27 +316,30 @@ function Pill({ color, children }: { color: string; children: React.ReactNode })
 
 const S = {
   overlayBtn: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    background: 'white', color: '#334155',
-    border: '1.5px solid #E2E8F0', padding: '7px 14px',
-    borderRadius: 8, fontSize: 13, fontWeight: 600,
-    cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.08)',
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    background: 'rgba(255,255,255,0.95)', color: '#334155',
+    border: '1.5px solid #E2E8F0', padding: '10px 18px',
+    borderRadius: 12, fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,.1)',
+    minHeight: 48, backdropFilter: 'blur(4px)',
   } as React.CSSProperties,
 
   overlayBtnActive: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
+    display: 'inline-flex', alignItems: 'center', gap: 8,
     background: '#7C3AED', color: 'white',
-    border: '1.5px solid #7C3AED', padding: '7px 14px',
-    borderRadius: 8, fontSize: 13, fontWeight: 600,
-    cursor: 'pointer', boxShadow: '0 2px 8px #7C3AED44',
+    border: '1.5px solid #7C3AED', padding: '10px 18px',
+    borderRadius: 12, fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', boxShadow: '0 4px 12px #7C3AED55',
+    minHeight: 48,
   } as React.CSSProperties,
 
   zoomBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    border: '1.5px solid #E2E8F0', background: 'white',
-    color: '#475569', cursor: 'pointer', fontSize: 16,
-    fontWeight: 600, display: 'flex', alignItems: 'center',
-    justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.06)',
+    width: 48, height: 48, borderRadius: 12,
+    border: 'none', background: 'rgba(255,255,255,0.92)',
+    color: '#0F172A', cursor: 'pointer', fontSize: 22,
+    fontWeight: 700, display: 'flex', alignItems: 'center',
+    justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,.12)',
+    backdropFilter: 'blur(4px)',
   } as React.CSSProperties,
 
   coordInput: {

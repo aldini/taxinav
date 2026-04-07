@@ -5,7 +5,37 @@ body {
   background: #F0F4F8;
   color: #0F172A;
   -webkit-font-smoothing: antialiased;
+  /* prevent iOS overscroll bounce on the whole page */
+  overscroll-behavior: none;
 }
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: #F1F5F9; }
+
+/* prevent iOS tap highlight */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* buttons: no 300ms delay, no text selection */
+button, label, a {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 99px; }
+
+/* GPS dot pulse animation */
+@keyframes gps-pulse {
+  0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.6; }
+  70%  { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+}
+.gps-pulse {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2563EB;
+  top: 50%;
+  left: 50%;
+  animation: gps-pulse 2s ease-out infinite;
+}
