@@ -138,7 +138,6 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
         onClick={handleChartClick}
         onMouseDown={vp.onMouseDown} onMouseMove={vp.onMouseMove}
         onMouseUp={vp.onMouseUp} onMouseLeave={vp.onMouseUp}
-        onTouchStart={vp.onTouchStart} onTouchMove={vp.onTouchMove}
         style={{
           flex: 1, overflow: 'hidden', position: 'relative',
           background: pdfPage ? '#E8ECF0' : '#F0F4F8',

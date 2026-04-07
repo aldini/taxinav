@@ -70,7 +70,7 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
   useEffect(() => {
     if (!autoCenter || !acPx || !containerRef.current) return
     const { clientWidth: W, clientHeight: H } = containerRef.current
-    vp.setPan({ x: W / 2 - acPx.px * vp.zoom, y: H / 2 - acPx.py * vp.zoom })
+    vp.centerOn(acPx.px, acPx.py, W, H, vp.zoom)
   }, [acPx, autoCenter])
 
   const handleChartClick = (e: React.MouseEvent | React.TouchEvent) => {
@@ -105,7 +105,6 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
         onClick={handleChartClick}
         onMouseDown={vp.onMouseDown} onMouseMove={vp.onMouseMove}
         onMouseUp={vp.onMouseUp} onMouseLeave={vp.onMouseUp}
-        onTouchStart={vp.onTouchStart} onTouchMove={vp.onTouchMove}
         style={{ flex: 1, overflow: 'hidden', position: 'relative', background: pdfPage ? '#E8ECF0' : '#F0F4F8', cursor: simMode ? 'crosshair' : 'grab' }}
       >
         {/* Loading */}

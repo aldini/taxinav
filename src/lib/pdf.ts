@@ -34,21 +34,32 @@ export async function loadPageFromFile(file: File): Promise<any> {
   return doc.getPage(1)
 }
 
-/** Render a PDF page to a canvas — returns a cancellable task */
+/** Render a PDF page to a canvas — returns a cancellable task.
+ *  Renders at scale × devicePixelRatio for sharp Retina/iPad display.
+ *  canvas.style.width/height are set to CSS pixel size (= scale × pdf_units).
+ *  All coordinate values (GCP px/py, click positions) live in CSS pixel space. */
 export function renderPage(
   page: any,
   canvas: HTMLCanvasElement,
   scale = 2
 ): { promise: Promise<{ w: number; h: number }>; cancel: () => void } {
-  const vp = page.getViewport({ scale })
+  const dpr = Math.min(window.devicePixelRatio || 1, 3) // cap at 3× to limit memory
+  const vp = page.getViewport({ scale: scale * dpr })
+  // Raw canvas pixels = scale * dpr * pdf_units (high res)
   canvas.width = vp.width
   canvas.height = vp.height
+  // CSS size = scale * pdf_units (what layout and coordinates use)
+  const cssW = vp.width / dpr
+  const cssH = vp.height / dpr
+  canvas.style.width = `${cssW}px`
+  canvas.style.height = `${cssH}px`
+
   const ctx = canvas.getContext('2d')!
   const task = page.render({ canvasContext: ctx, viewport: vp })
   const promise = task.promise
-    .then(() => ({ w: vp.width, h: vp.height }))
+    .then(() => ({ w: cssW, h: cssH }))
     .catch((e: any) => {
-      if (e?.name === 'RenderingCancelledException') return { w: vp.width, h: vp.height }
+      if (e?.name === 'RenderingCancelledException') return { w: cssW, h: cssH }
       throw e
     })
   return { promise, cancel: () => task.cancel() }
