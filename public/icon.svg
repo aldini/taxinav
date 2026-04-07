@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#0EA5E9"/>
+
+  <!-- Airplane silhouette -->
+  <g fill="white" transform="translate(256,200) scale(1.1)">
+    <!-- fuselage -->
+    <ellipse cx="0" cy="0" rx="14" ry="72" transform="rotate(-45)"/>
+    <!-- left wing -->
+    <ellipse cx="-20" cy="-20" rx="60" ry="10" transform="rotate(-45) translate(-20,-5)"/>
+    <!-- right wing -->
+    <ellipse cx="20" cy="20" rx="60" ry="10" transform="rotate(-45) translate(20,5)"/>
+    <!-- tail left -->
+    <ellipse cx="-10" cy="-10" rx="28" ry="6" transform="rotate(-45) translate(-46,-18)"/>
+    <!-- tail right -->
+    <ellipse cx="10" cy="10" rx="28" ry="6" transform="rotate(-45) translate(46,18)"/>
+  </g>
+
+  <!-- "TAXI" text -->
+  <text
+    x="256" y="370"
+    font-family="Arial Black, Arial, sans-serif"
+    font-weight="900"
+    font-size="100"
+    fill="white"
+    text-anchor="middle"
+    letter-spacing="6"
+  >TAXI</text>
+
+  <!-- "NAV" text -->
+  <text
+    x="256" y="460"
+    font-family="Arial Black, Arial, sans-serif"
+    font-weight="900"
+    font-size="72"
+    fill="rgba(255,255,255,0.75)"
+    text-anchor="middle"
+    letter-spacing="12"
+  >NAV</text>
+</svg>
