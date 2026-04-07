@@ -3,7 +3,10 @@
     "allow": [
       "Read(//c/Users/david/AppData/Local/Temp/claude/C--Users-david-OneDrive-6-APP-APP-taxinav-taxinav/490bead4-6d66-4e06-bc07-a70b803f37c3/tasks/**)",
       "Bash(npx tsc:*)",
-      "Bash(node_modules/.bin/vite build:*)"
+      "Bash(node_modules/.bin/vite build:*)",
+      "Bash(gh repo:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

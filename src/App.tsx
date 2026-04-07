@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import type { User } from '@supabase/supabase-js'
 import type { Airport, Chart } from './lib/types'
-import { isConfigured } from './lib/supabase'
+import { isConfigured, supabase } from './lib/supabase'
 import { AirportSelect } from './pages/AirportSelect'
 import { ChartSelect } from './pages/ChartSelect'
 import { GeorefEditor } from './pages/GeorefEditor'
 import { Navigator } from './pages/Navigator'
+import { LoginScreen } from './pages/LoginScreen'
 
 type Screen =
   | { name: 'airports' }
@@ -13,7 +15,16 @@ type Screen =
   | { name: 'nav'; airport: Airport; chart: Chart }
 
 export default function App() {
+  const [user, setUser] = useState<User | null | undefined>(undefined) // undefined = loading
   const [screen, setScreen] = useState<Screen>({ name: 'airports' })
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   const go = {
     airports: () => setScreen({ name: 'airports' }),
@@ -23,10 +34,12 @@ export default function App() {
   }
 
   if (!isConfigured()) return <SetupScreen />
+  if (user === undefined) return null // loading
+  if (user === null) return <LoginScreen />
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'Outfit, sans-serif', background: '#F0F4F8' }}>
-      <Header screen={screen} go={go} />
+      <Header screen={screen} go={go} user={user} />
       <main style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {screen.name === 'airports' && (
           <AirportSelect onSelect={go.charts} />
@@ -60,7 +73,7 @@ export default function App() {
   )
 }
 
-function Header({ screen, go }: { screen: Screen; go: ReturnType<typeof buildGo> }) {
+function Header({ screen, go, user }: { screen: Screen; go: ReturnType<typeof buildGo>; user: User }) {
   const inNav = screen.name === 'nav'
 
   return (
@@ -114,12 +127,16 @@ function Header({ screen, go }: { screen: Screen; go: ReturnType<typeof buildGo>
         )}
       </div>
 
-      {/* Right: version */}
-      {!inNav && (
-        <div style={{ marginLeft: 'auto', paddingRight: 16, fontSize: 10, color: '#334155', fontFamily: 'DM Mono, monospace' }}>
-          v1.0
-        </div>
-      )}
+      {/* Right: user + logout */}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingRight: 16 }}>
+        <span style={{ fontSize: 11, color: '#475569', fontFamily: 'DM Mono, monospace' }}>{user.email}</span>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          style={{ fontSize: 11, color: '#64748B', background: 'none', border: '1px solid #1E293B', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}
+        >
+          Logout
+        </button>
+      </div>
     </header>
   )
 }

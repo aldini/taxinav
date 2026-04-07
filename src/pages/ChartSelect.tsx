@@ -46,13 +46,11 @@ export function ChartSelect({ airport, onBack, onGeoref, onNav }: Props) {
       const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: 'application/pdf', upsert: true })
       if (uploadErr) throw new Error(uploadErr.message)
 
-      const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(path)
-
       const { error: insertErr } = await supabase.from('charts').insert({
         airport_id: airport.id,
         name: chartName.trim(),
         type: chartType,
-        pdf_url: publicUrl,
+        pdf_url: path,   // store storage path, not public URL
         georef: null,
       })
       if (insertErr) throw new Error(insertErr.message)
@@ -70,8 +68,7 @@ export function ChartSelect({ airport, onBack, onGeoref, onNav }: Props) {
     if (!confirm(`Eliminare la chart "${chart.name}"?`)) return
     setDeleting(chart.id)
     if (chart.pdf_url) {
-      const path = chart.pdf_url.split(`/${BUCKET}/`)[1]
-      if (path) await supabase.storage.from(BUCKET).remove([path])
+      await supabase.storage.from(BUCKET).remove([chart.pdf_url])
     }
     await supabase.from('charts').delete().eq('id', chart.id)
     setDeleting(null); load()

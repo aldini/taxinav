@@ -1,3 +1,5 @@
+import { supabase, BUCKET } from './supabase'
+
 let _ready = false
 
 function init() {
@@ -14,16 +16,21 @@ function lib() {
   return (window as any).pdfjsLib as any
 }
 
-/** Load first page of a PDF from a URL or File */
-export async function loadPage(source: string | File): Promise<any> {
+/** Load first page of a PDF from Supabase Storage (private bucket) using path */
+export async function loadPage(path: string): Promise<any> {
+  const { data, error } = await supabase.storage.from(BUCKET).download(path)
+  if (error) throw new Error(error.message)
+  const buf = await data.arrayBuffer()
   const pdfjsLib = lib()
-  let doc: any
-  if (typeof source === 'string') {
-    doc = await pdfjsLib.getDocument({ url: source, withCredentials: false }).promise
-  } else {
-    const buf = await source.arrayBuffer()
-    doc = await pdfjsLib.getDocument({ data: buf }).promise
-  }
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise
+  return doc.getPage(1)
+}
+
+/** Load first page of a PDF from a local File (for upload preview) */
+export async function loadPageFromFile(file: File): Promise<any> {
+  const buf = await file.arrayBuffer()
+  const pdfjsLib = lib()
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise
   return doc.getPage(1)
 }
 
