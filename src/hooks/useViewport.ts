@@ -7,11 +7,11 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
   const touches = useRef<{ x: number; y: number }[]>([])
   const panPaused = useRef(false)
 
-  // Wheel + touch — native non-passive so preventDefault() works
   useEffect(() => {
     const el = elRef.current
     if (!el) return
 
+    // ── Wheel zoom ────────────────────────────────────────────────
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const f = e.deltaY > 0 ? 0.87 : 1.15
@@ -24,10 +24,10 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
       })
     }
 
+    // ── Touch pan/pinch ───────────────────────────────────────────
     const onTouchStart = (e: TouchEvent) => {
       touches.current = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }))
     }
-
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault()
       if (panPaused.current) return
@@ -52,53 +52,54 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
       touches.current = tl
     }
 
+    // ── Mouse drag via Pointer Events + setPointerCapture ─────────
+    // setPointerCapture routes ALL subsequent pointer events to this
+    // element even when the mouse leaves it — no window listeners needed.
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return
+      if (panPaused.current) return
+      el.setPointerCapture(e.pointerId)
+      drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
+      document.body.style.cursor = 'grabbing'
+    }
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || !el.hasPointerCapture(e.pointerId)) return
+      setPan(p => ({ x: p.x + (e.clientX - drag.current.sx), y: p.y + (e.clientY - drag.current.sy) }))
+      drag.current.sx = e.clientX
+      drag.current.sy = e.clientY
+    }
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || !el.hasPointerCapture(e.pointerId)) return
+      drag.current.on = false
+      el.releasePointerCapture(e.pointerId)
+      document.body.style.cursor = ''
+    }
+
     el.addEventListener('wheel', onWheel, { passive: false })
     el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('pointerdown', onPointerDown)
+    el.addEventListener('pointermove', onPointerMove)
+    el.addEventListener('pointerup', onPointerUp)
+    el.addEventListener('pointercancel', onPointerUp)
+
     return () => {
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointermove', onPointerMove)
+      el.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('pointercancel', onPointerUp)
     }
   }, [elRef])
 
-  // Mouse drag — React synthetic onMouseDown + window-level move/up
-  // userSelect:none on body during drag is the reliable way to block
-  // text-selection without calling e.preventDefault() (which can suppress click)
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    if (panPaused.current) return
-
-    drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
-
-    // Block text selection and set grabbing cursor for the duration of the drag
-    document.body.style.userSelect = 'none'
-    document.body.style.webkitUserSelect = 'none'
-    document.body.style.cursor = 'grabbing'
-
-    const onMove = (ev: MouseEvent) => {
-      setPan(p => ({ x: p.x + (ev.clientX - drag.current.sx), y: p.y + (ev.clientY - drag.current.sy) }))
-      drag.current.sx = ev.clientX
-      drag.current.sy = ev.clientY
-    }
-    const onUp = () => {
-      drag.current.on = false
-      document.body.style.userSelect = ''
-      document.body.style.webkitUserSelect = ''
-      document.body.style.cursor = ''
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [])
-
-  /** Returns true if the most recent mousedown→mouseup moved more than 5px */
+  /** Returns true if the most recent drag moved more than 5 px */
   const hasDragged = useCallback(() =>
     Math.hypot(drag.current.sx - drag.current.ox, drag.current.sy - drag.current.oy) > 5
   , [])
 
-  /** Pause panning (e.g. during grid tool line positioning) */
+  /** Pause panning (e.g. during grid line placement) */
   const pausePan = useCallback(() => { panPaused.current = true }, [])
   /** Resume panning */
   const resumePan = useCallback(() => { panPaused.current = false }, [])
@@ -108,6 +109,9 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
   const centerOn = useCallback((px: number, py: number, W: number, H: number, z: number) => {
     setPan({ x: W / 2 - px * z, y: H / 2 - py * z })
   }, [])
+
+  // Kept for API compatibility (no-op — drag is handled natively above)
+  const onMouseDown = useCallback((_e: React.MouseEvent) => {}, [])
 
   return { zoom, setZoom, pan, setPan, reset, centerOn, hasDragged, pausePan, resumePan, onMouseDown }
 }
