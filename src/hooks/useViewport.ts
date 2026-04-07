@@ -60,7 +60,7 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
       if (panPaused.current) return
       el.setPointerCapture(e.pointerId)
       drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
-      document.body.style.cursor = 'grabbing'
+      el.style.cursor = 'grabbing'          // override the element's own cursor style
     }
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerType !== 'mouse' || !el.hasPointerCapture(e.pointerId)) return
@@ -72,7 +72,7 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
       if (e.pointerType !== 'mouse' || !el.hasPointerCapture(e.pointerId)) return
       drag.current.on = false
       el.releasePointerCapture(e.pointerId)
-      document.body.style.cursor = ''
+      el.style.cursor = ''                  // restore the CSS cursor (grab / crosshair)
     }
 
     el.addEventListener('wheel', onWheel, { passive: false })
