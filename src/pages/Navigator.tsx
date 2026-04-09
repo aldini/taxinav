@@ -7,6 +7,8 @@ import { useGPS } from '../hooks/useGPS'
 import { Aircraft } from '../components/Aircraft'
 import { supabase } from '../lib/supabase'
 
+const GCP_COLORS = ['#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#06B6D4', '#F97316', '#84CC16']
+
 interface Props {
   airport: Airport
   chart: Chart
@@ -36,6 +38,7 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
   const [autoCenter, setAutoCenter] = useState(true)
   const [acPx, setAcPx] = useState<{ px: number; py: number } | null>(null)
   const [accPx, setAccPx] = useState<number | null>(null)
+  const [showGcps, setShowGcps] = useState(false)
 
   const cvRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -173,6 +176,22 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
         </div>
         <div style={{ position: 'absolute', transform: `translate(${vp.pan.x}px,${vp.pan.y}px) scale(${vp.zoom})`, transformOrigin: '0 0' }}>
           <canvas ref={cvRef} style={{ display: 'block', boxShadow: '0 4px 32px rgba(0,0,0,.15)' }} />
+          {/* GCP backprojection overlay — shows where stored GCPs should appear */}
+          {showGcps && georef?.gcps && georef.gcps.map((gcp, i) => {
+            const pos = geo2px(gcp.lon, gcp.lat, georef.transform)
+            if (!pos) return null
+            const color = GCP_COLORS[i % GCP_COLORS.length]
+            return (
+              <div key={i} style={{ position: 'absolute', left: pos.px, top: pos.py, pointerEvents: 'none' }}>
+                <div style={{ position: 'absolute', left: -20, top: -1, width: 40, height: 2, background: color, opacity: 0.9 }} />
+                <div style={{ position: 'absolute', top: -20, left: -1, width: 2, height: 40, background: color, opacity: 0.9 }} />
+                <div style={{ position: 'absolute', width: 14, height: 14, borderRadius: '50%', background: color, border: '2px solid white', transform: 'translate(-50%,-50%)', boxShadow: `0 0 0 1.5px ${color}` }} />
+                <div style={{ position: 'absolute', left: 10, top: -18, background: 'rgba(15,23,42,0.85)', color, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap', border: `1px solid ${color}55` }}>
+                  {gcp.label || `GCP${i + 1}`}
+                </div>
+              </div>
+            )
+          })}
           {acPx && (
             <div style={{ position: 'absolute', left: acPx.px, top: acPx.py, pointerEvents: 'none' }}>
               {accPx && accPx > 10 && (
@@ -332,13 +351,19 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
           </button>
         )}
 
-        {/* Georef missing */}
-        {!georef && (
-          <button onClick={() => onGeoref(activeChart)} style={S.bottomBtn('#451A03', '#FB923C')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span style={{ fontSize: 12, fontWeight: 700 }}>Georef!</span>
+        {/* GCP verification toggle (only when georef exists) */}
+        {georef && pdfPage && (
+          <button onClick={() => setShowGcps(v => !v)} style={S.bottomBtn(showGcps ? '#1C3A2A' : '#1E293B', showGcps ? '#34D399' : '#475569')} title="Mostra/nascondi GCP">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+            <span style={{ fontSize: 11, fontWeight: 700 }}>GCP</span>
           </button>
         )}
+
+        {/* Georef button — always visible to allow fixing a wrong georef */}
+        <button onClick={() => onGeoref(activeChart)} style={S.bottomBtn(georef ? '#1E293B' : '#451A03', georef ? '#475569' : '#FB923C')} title={georef ? 'Modifica georef' : 'Georeferenzia!'}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span style={{ fontSize: 12, fontWeight: 700 }}>{georef ? 'Georef' : 'Georef!'}</span>
+        </button>
 
         {gps.error && (
           <span style={{ fontSize: 11, color: '#FCA5A5' }}>{gps.error}</span>
