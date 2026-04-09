@@ -449,8 +449,9 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
           {/* ── PDF canvas pane ── */}
           <div
             ref={containerRef}
+            {...vp.bind}
             onClick={handleChartClick}
-            onMouseMove={e => setCursorScreen({ x: e.clientX, y: e.clientY })}
+            onMouseMove={gridPhase === 'lat-line' || gridPhase === 'lon-line' ? (e => setCursorScreen({ x: e.clientX, y: e.clientY })) : undefined}
             style={{ flex: 1, overflow: 'hidden', position: 'relative', background: pdfPage ? '#DDE3EA' : '#F0F4F8', cursor: chartCursor, userSelect: 'none' }}
           >
             {/* Instruction banner */}

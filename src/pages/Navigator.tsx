@@ -232,8 +232,8 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
       {/* ── Chart area ── */}
       <div
         ref={containerRef}
+        {...vp.bind}
         onClick={handleChartClick}
-        onMouseDown={vp.onMouseDown}
         style={{ flex: 1, overflow: 'hidden', position: 'relative', background: pdfPage ? '#E8ECF0' : '#F0F4F8', cursor: simMode ? 'crosshair' : 'grab', userSelect: 'none' }}
       >
         {pdfLoading && (

@@ -1,17 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
+/**
+ * Pan/zoom viewport hook.
+ *
+ * Mouse drag   → handled via React onPointerDown/Move/Up handlers returned by the hook.
+ *                Spread `...vp.bind` on the container element.
+ * Mouse wheel  → native listener (needs preventDefault).
+ * Touch        → native listener (needs preventDefault).
+ */
 export function useViewport(elRef: React.RefObject<HTMLElement>) {
   const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const drag = useRef({ on: false, sx: 0, sy: 0, ox: 0, oy: 0 })
-  const touches = useRef<{ x: number; y: number }[]>([])
-  const panPaused = useRef(false)
+  const [pan, setPan]   = useState({ x: 0, y: 0 })
 
+  const drag       = useRef({ on: false, sx: 0, sy: 0, ox: 0, oy: 0 })
+  const touches    = useRef<{ x: number; y: number }[]>([])
+  const panPaused  = useRef(false)
+  const capturing  = useRef(false)
+
+  // ── Wheel + touch: still need native listeners (passive:false) ─────────────
   useEffect(() => {
     const el = elRef.current
     if (!el) return
 
-    // ── Wheel zoom ────────────────────────────────────────────────
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const f = e.deltaY > 0 ? 0.87 : 1.15
@@ -24,7 +34,6 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
       })
     }
 
-    // ── Touch pan/pinch ───────────────────────────────────────────
     const onTouchStart = (e: TouchEvent) => {
       touches.current = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }))
     }
@@ -52,56 +61,51 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
       touches.current = tl
     }
 
-    // ── Mouse drag via Pointer Events + setPointerCapture ─────────
-    // setPointerCapture routes ALL subsequent pointer events to this
-    // element even when the mouse leaves it — no window listeners needed.
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || e.button !== 0) return
-      if (panPaused.current) return
-      el.setPointerCapture(e.pointerId)
-      drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
-      el.style.cursor = 'grabbing'          // override the element's own cursor style
-    }
-    const onPointerMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || !el.hasPointerCapture(e.pointerId)) return
-      setPan(p => ({ x: p.x + (e.clientX - drag.current.sx), y: p.y + (e.clientY - drag.current.sy) }))
-      drag.current.sx = e.clientX
-      drag.current.sy = e.clientY
-    }
-    const onPointerUp = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || !el.hasPointerCapture(e.pointerId)) return
-      drag.current.on = false
-      el.releasePointerCapture(e.pointerId)
-      el.style.cursor = ''                  // restore the CSS cursor (grab / crosshair)
-    }
-
-    el.addEventListener('wheel', onWheel, { passive: false })
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: false })
-    el.addEventListener('pointerdown', onPointerDown)
-    el.addEventListener('pointermove', onPointerMove)
-    el.addEventListener('pointerup', onPointerUp)
-    el.addEventListener('pointercancel', onPointerUp)
-
+    el.addEventListener('wheel',      onWheel,      { passive: false })
+    el.addEventListener('touchstart', onTouchStart, { passive: true  })
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false })
     return () => {
-      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('wheel',      onWheel)
       el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('pointerdown', onPointerDown)
-      el.removeEventListener('pointermove', onPointerMove)
-      el.removeEventListener('pointerup', onPointerUp)
-      el.removeEventListener('pointercancel', onPointerUp)
+      el.removeEventListener('touchmove',  onTouchMove)
     }
   }, [elRef])
 
-  /** Returns true if the most recent drag moved more than 5 px */
+  // ── Mouse drag via React pointer handlers ──────────────────────────────────
+  // These are returned as `vp.bind` and spread onto the container element.
+  // Using React handlers (not native) guarantees correct timing with React's
+  // synthetic event system and avoids the native-listener attachment race.
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return               // left button only
+    if (panPaused.current) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    capturing.current = true
+    drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY }
+  }, [])
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!drag.current.on || !capturing.current) return
+    const dx = e.clientX - drag.current.sx
+    const dy = e.clientY - drag.current.sy
+    setPan(p => ({ x: p.x + dx, y: p.y + dy }))
+    drag.current.sx = e.clientX
+    drag.current.sy = e.clientY
+  }, [])
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!capturing.current) return
+    drag.current.on = false
+    capturing.current = false
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
+  }, [])
+
+  /** Returns true if the most recent drag moved > 5 px */
   const hasDragged = useCallback(() =>
     Math.hypot(drag.current.sx - drag.current.ox, drag.current.sy - drag.current.oy) > 5
   , [])
 
-  /** Pause panning (e.g. during grid line placement) */
-  const pausePan = useCallback(() => { panPaused.current = true }, [])
-  /** Resume panning */
+  const pausePan  = useCallback(() => { panPaused.current = true  }, [])
   const resumePan = useCallback(() => { panPaused.current = false }, [])
 
   const reset = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
@@ -110,8 +114,16 @@ export function useViewport(elRef: React.RefObject<HTMLElement>) {
     setPan({ x: W / 2 - px * z, y: H / 2 - py * z })
   }, [])
 
-  // Kept for API compatibility (no-op — drag is handled natively above)
+  /** Spread these props onto the container div. */
+  const bind = {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel: onPointerUp,
+  }
+
+  // Kept for backward compatibility (no-op)
   const onMouseDown = useCallback((_e: React.MouseEvent) => {}, [])
 
-  return { zoom, setZoom, pan, setPan, reset, centerOn, hasDragged, pausePan, resumePan, onMouseDown }
+  return { zoom, setZoom, pan, setPan, reset, centerOn, hasDragged, pausePan, resumePan, onMouseDown, bind }
 }
