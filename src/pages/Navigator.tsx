@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import type { Airport, Chart, GpsPosition } from '../lib/types'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import type { Airport, Chart, GpsPosition, AffineTransform } from '../lib/types'
 import { geo2px, px2geo } from '../lib/math'
 import { loadPage, renderPage } from '../lib/pdf'
 import { useViewport } from '../hooks/useViewport'
@@ -8,6 +8,94 @@ import { Aircraft } from '../components/Aircraft'
 import { supabase } from '../lib/supabase'
 
 const GCP_COLORS = ['#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#06B6D4', '#F97316', '#84CC16']
+
+// ── Background map (OSM tiles aligned to georef) ───────────────────────────────
+const TILE = 256
+
+function ll2w(lat: number, lon: number, z: number) {
+  const n = 1 << Math.round(z)
+  const s = Math.sin(lat * Math.PI / 180)
+  return {
+    x: (lon + 180) / 360 * n * TILE,
+    y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n * TILE,
+  }
+}
+
+interface BgMapProps {
+  t: AffineTransform
+  pan: { x: number; y: number }
+  zoom: number
+  size: { w: number; h: number }
+}
+
+function BackgroundMap({ t, pan, zoom, size }: BgMapProps) {
+  const tiles = useMemo(() => {
+    if (!size.w || !size.h || !t.a || !t.e) return []
+
+    // Chart origin (px=0,py=0) → lon0, lat0
+    const lon0 = t.c, lat0 = t.f
+    const latRad = lat0 * Math.PI / 180
+
+    // Choose tile zoom so tiles render ~256px on screen
+    const z = Math.max(1, Math.min(18, Math.round(Math.log2(Math.abs(zoom * 360 / (t.a * TILE))))))
+    const n = 1 << z
+
+    // World pixel of chart origin
+    const { x: wx0, y: wy0 } = ll2w(lat0, lon0, z)
+
+    // Screen pixels per map world pixel
+    // Derived from: 1 chart pixel = t.a degrees lon = (n*TILE/360)*t.a world pixels
+    // 1 screen pixel = 1/zoom chart pixels → scaleX = zoom*360/(t.a*n*TILE)
+    const scaleX = zoom * 360 / (t.a * n * TILE)
+    // Mercator lat scale: dwy/dlat_deg = -n*TILE/(360*cos(lat))
+    const scaleY = zoom * 360 * Math.cos(latRad) / (-t.e * n * TILE)
+
+    const tileW = Math.abs(TILE * scaleX)
+    const tileH = Math.abs(TILE * scaleY)
+
+    // Visible world-pixel range on screen
+    const wxMin = (0 - pan.x) / scaleX + wx0
+    const wxMax = (size.w - pan.x) / scaleX + wx0
+    const wyMin = (0 - pan.y) / scaleY + wy0
+    const wyMax = (size.h - pan.y) / scaleY + wy0
+
+    const txMin = Math.floor(Math.min(wxMin, wxMax) / TILE) - 1
+    const txMax = Math.ceil(Math.max(wxMin, wxMax) / TILE) + 1
+    const tyMin = Math.floor(Math.min(wyMin, wyMax) / TILE) - 1
+    const tyMax = Math.ceil(Math.max(wyMin, wyMax) / TILE) + 1
+
+    const result: { key: string; src: string; left: number; top: number; w: number; h: number }[] = []
+    for (let tx = txMin; tx <= txMax; tx++) {
+      for (let ty = tyMin; ty <= tyMax; ty++) {
+        if (ty < 0 || ty >= n) continue
+        const txi = ((tx % n) + n) % n
+        result.push({
+          key: `${z}/${txi}/${ty}/${tx}`,
+          src: `https://tile.openstreetmap.org/${z}/${txi}/${ty}.png`,
+          left: Math.round((tx * TILE - wx0) * scaleX + pan.x),
+          top:  Math.round((ty * TILE - wy0) * scaleY + pan.y),
+          w: Math.round(tileW),
+          h: Math.round(tileH),
+        })
+      }
+    }
+    return result
+  }, [t, pan.x, pan.y, zoom, size])
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+      {tiles.map(tile => (
+        <img key={tile.key} src={tile.src}
+          style={{ position: 'absolute', left: tile.left, top: tile.top, width: tile.w, height: tile.h, display: 'block' }}
+          alt="" draggable={false}
+        />
+      ))}
+      <div style={{ position: 'absolute', bottom: 2, left: 4, fontSize: 9, color: '#333', background: 'rgba(255,255,255,0.72)', padding: '1px 5px', borderRadius: 2 }}>
+        © OpenStreetMap contributors
+      </div>
+    </div>
+  )
+}
 
 interface Props {
   airport: Airport
@@ -39,6 +127,8 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
   const [acPx, setAcPx] = useState<{ px: number; py: number } | null>(null)
   const [accPx, setAccPx] = useState<number | null>(null)
   const [showGcps, setShowGcps] = useState(false)
+  const [showBgMap, setShowBgMap] = useState(true)
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
 
   const cvRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -48,6 +138,14 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
   const activePos: GpsPosition | null = simMode ? simPos : (gps.status === 'live' ? gps.position : null)
   const georef = activeChart.georef
   const isRunning = gps.status === 'live' || gps.status === 'waiting' || simMode
+
+  // Track container size for background map
+  useEffect(() => {
+    const el = containerRef.current; if (!el) return
+    const ro = new ResizeObserver(() => setContainerSize({ w: el.clientWidth, h: el.clientHeight }))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Fetch all charts for this airport (for the drawer)
   useEffect(() => {
@@ -174,8 +272,18 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
           <button style={S.zoomBtn} onClick={() => vp.setZoom(z => Math.max(0.1, z * 0.72))}>−</button>
           <button style={{ ...S.zoomBtn, fontSize: 10, marginTop: 4 }} onClick={vp.reset}>RST</button>
         </div>
+        {/* Background OSM map — aligned to chart via georef transform */}
+        {showBgMap && georef?.transform && (
+          <BackgroundMap
+            t={georef.transform}
+            pan={vp.pan}
+            zoom={vp.zoom}
+            size={containerSize}
+          />
+        )}
+
         <div style={{ position: 'absolute', transform: `translate(${vp.pan.x}px,${vp.pan.y}px) scale(${vp.zoom})`, transformOrigin: '0 0' }}>
-          <canvas ref={cvRef} style={{ display: 'block', boxShadow: '0 4px 32px rgba(0,0,0,.15)' }} />
+          <canvas ref={cvRef} style={{ display: 'block', boxShadow: '0 4px 32px rgba(0,0,0,.15)', opacity: showBgMap && georef ? 0.82 : 1, transition: 'opacity 0.2s' }} />
           {/* GCP backprojection overlay — shows where stored GCPs should appear */}
           {showGcps && georef?.gcps && georef.gcps.map((gcp, i) => {
             const pos = geo2px(gcp.lon, gcp.lat, georef.transform)
@@ -356,6 +464,21 @@ export function Navigator({ airport, chart, onBack, onGeoref }: Props) {
           <button onClick={() => setShowGcps(v => !v)} style={S.bottomBtn(showGcps ? '#1C3A2A' : '#1E293B', showGcps ? '#34D399' : '#475569')} title="Mostra/nascondi GCP">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
             <span style={{ fontSize: 11, fontWeight: 700 }}>GCP</span>
+          </button>
+        )}
+
+        {/* Background map toggle */}
+        {georef && (
+          <button
+            onClick={() => setShowBgMap(v => !v)}
+            style={S.bottomBtn(showBgMap ? '#0C2340' : '#1E293B', showBgMap ? '#38BDF8' : '#475569')}
+            title="Mappa di sfondo"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+              <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+            </svg>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>Mappa</span>
           </button>
         )}
 
