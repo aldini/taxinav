@@ -58,6 +58,7 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
   // Controls
   const [chartLocked, setChartLocked] = useState(false)
   const [opacity, setOpacity] = useState(0.65)
+  const [mapStyle, setMapStyle] = useState<'osm' | 'satellite'>('osm')
 
   // Map
   const [mapLat, setMapLat] = useState(45.5)
@@ -65,6 +66,9 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
   const [mapZoom, setMapZoom] = useState(13)
   const [mapSize, setMapSize] = useState({ w: 0, h: 0 })
   const [airportFetched, setAirportFetched] = useState(false)
+
+  // Live ref so wheel handler can read without stale closure
+  const overlayPosActiveRef = useRef(false)
 
   const [saving, setSaving] = useState(false)
 
@@ -149,12 +153,27 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
     return () => ro.disconnect()
   }, [])
 
-  // Non-passive wheel for zoom
+  // Keep overlayPosActiveRef in sync
+  useEffect(() => { overlayPosActiveRef.current = !!overlayPos && !chartLocked }, [overlayPos, chartLocked])
+
+  // Non-passive wheel: zoom PDF when overlay active & unlocked, else zoom map
   useEffect(() => {
     const el = mapContainerRef.current; if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      setMapZoom(z => Math.max(1, Math.min(19, Math.round(z) + (e.deltaY > 0 ? -1 : 1))))
+      if (overlayPosActiveRef.current) {
+        // Scale PDF overlay around its center
+        const factor = Math.pow(0.999, e.deltaY)
+        const { x, y, w, h, rotation } = overlayPosRef.current
+        const nw = Math.max(60, w * factor)
+        const nh = nw / pdfAspectRef.current
+        const nx = x + (w - nw) / 2
+        const ny = y + (h - nh) / 2
+        updateOverlayDOM(nx, ny, nw, nh, rotation)
+        setOverlayPos({ x: nx, y: ny, w: nw, h: nh, rotation })
+      } else {
+        setMapZoom(z => Math.max(1, Math.min(19, Math.round(z) + (e.deltaY > 0 ? -1 : 1))))
+      }
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -338,11 +357,15 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
       for (let ty = Math.floor(tlY / TILE); ty <= Math.ceil((tlY + mapSize.h) / TILE); ty++) {
         if (ty < 0 || ty >= n) continue
         const txi = ((tx % n) + n) % n
-        out.push({ key: `${z}/${txi}/${ty}/${tx}`, src: `https://tile.openstreetmap.org/${z}/${txi}/${ty}.png`, left: Math.round(tx * TILE - tlX), top: Math.round(ty * TILE - tlY) })
+        // ESRI satellite uses {z}/{y}/{x} (y before x)
+        const src = mapStyle === 'satellite'
+          ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${txi}`
+          : `https://tile.openstreetmap.org/${z}/${txi}/${ty}.png`
+        out.push({ key: `${mapStyle}/${z}/${txi}/${ty}/${tx}`, src, left: Math.round(tx * TILE - tlX), top: Math.round(ty * TILE - tlY) })
       }
     }
     return out
-  }, [mapLat, mapLon, z, mapSize])
+  }, [mapLat, mapLon, z, mapSize, mapStyle])
 
   // Handle positions (React render; DOM updated by updateOverlayDOM during drag)
   const handleDefs: { handle: DragHandle; cursor: string; bg: string; border: string; round: boolean }[] = [
@@ -378,6 +401,14 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
 
         {pdfLoading && <span style={{ fontSize: 12, color: '#F59E0B', fontWeight: 600 }}>⏳ Rendering PDF…</span>}
         {pdfError && <span style={{ fontSize: 12, color: '#EF4444', fontWeight: 600 }}>⚠ {pdfError}</span>}
+
+        {/* Map style toggle — always visible */}
+        <button
+          onClick={() => setMapStyle(s => s === 'osm' ? 'satellite' : 'osm')}
+          style={S.btn(mapStyle === 'satellite', '#7C3AED')}
+        >
+          {mapStyle === 'satellite' ? '🛰 Satellite' : '🗺 Street'}
+        </button>
 
         {overlayPos && (
           <>
@@ -465,13 +496,13 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
 
         {/* Attribution */}
         <div style={{ position: 'absolute', bottom: 2, left: 4, fontSize: 9, color: '#333', background: 'rgba(255,255,255,0.75)', padding: '1px 5px', borderRadius: 2, zIndex: 10, pointerEvents: 'none' }}>
-          © OpenStreetMap contributors
+          {mapStyle === 'satellite' ? '© Esri, Maxar, Earthstar Geographics' : '© OpenStreetMap contributors'}
         </div>
 
         {/* Status banners */}
         {pdfDataUrl && overlayPos && !chartLocked && (
           <div style={S.banner('#1E40AF')}>
-            Centro = sposta · Angoli = ridimensiona · Verde = ruota
+            Scroll = zoom PDF · Centro = sposta · Angoli = ridimensiona · Verde = ruota
           </div>
         )}
         {chartLocked && overlayPos && (
