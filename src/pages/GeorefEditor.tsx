@@ -67,8 +67,8 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
   const [mapSize, setMapSize] = useState({ w: 0, h: 0 })
   const [airportFetched, setAirportFetched] = useState(false)
 
-  // Live ref so wheel handler can read without stale closure
-  const overlayPosActiveRef = useRef(false)
+  // Mouse position relative to map container (for wheel hit-test)
+  const mousePosRef = useRef({ x: 0, y: 0 })
 
   const [saving, setSaving] = useState(false)
 
@@ -153,22 +153,30 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
     return () => ro.disconnect()
   }, [])
 
-  // Keep overlayPosActiveRef in sync
-  useEffect(() => { overlayPosActiveRef.current = !!overlayPos && !chartLocked }, [overlayPos, chartLocked])
-
-  // Non-passive wheel: zoom PDF when overlay active & unlocked, else zoom map
+  // Non-passive wheel: zoom PDF if cursor is over it (works with rotation), else zoom map
   useEffect(() => {
     const el = mapContainerRef.current; if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      if (overlayPosActiveRef.current) {
-        // Scale PDF overlay around its center
+      const { x: mx, y: my } = mousePosRef.current
+      const p = overlayPosRef.current
+      const overPdf = p.w > 0 && !chartLockedRef.current && (() => {
+        // Un-rotate mouse point into PDF local space, then bounds-check
+        const cx = p.x + p.w / 2, cy = p.y + p.h / 2
+        const rad = -p.rotation * Math.PI / 180
+        const [lx, ly] = rotPt(mx, my, cx, cy, rad)
+        return lx >= p.x && lx <= p.x + p.w && ly >= p.y && ly <= p.y + p.h
+      })()
+
+      if (overPdf) {
+        // Zoom PDF centered on the cursor position
         const factor = Math.pow(0.999, e.deltaY)
-        const { x, y, w, h, rotation } = overlayPosRef.current
+        const { x, y, w, h, rotation } = p
         const nw = Math.max(60, w * factor)
         const nh = nw / pdfAspectRef.current
-        const nx = x + (w - nw) / 2
-        const ny = y + (h - nh) / 2
+        // Keep the point under the cursor fixed
+        const nx = mx - (mx - x) * (nw / w)
+        const ny = my - (my - y) * (nh / h)
         updateOverlayDOM(nx, ny, nw, nh, rotation)
         setOverlayPos({ x: nx, y: ny, w: nw, h: nh, rotation })
       } else {
@@ -437,7 +445,11 @@ export function GeorefEditor({ airport, chart, onBack, onDone }: Props) {
         ref={mapContainerRef}
         style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#e8e0d8', cursor: 'grab', userSelect: 'none' }}
         onPointerDown={onMapPD}
-        onPointerMove={onMapPM}
+        onPointerMove={e => {
+          const r = mapContainerRef.current!.getBoundingClientRect()
+          mousePosRef.current = { x: e.clientX - r.left, y: e.clientY - r.top }
+          onMapPM(e)
+        }}
         onPointerUp={onMapPU}
       >
         {/* OSM tiles */}
