@@ -1,0 +1,29 @@
+name: TAXINAV Supabase Keep Alive Ping
+on:
+  schedule:
+    # Il cron job è impostato per eseguire Lunedì e Giovedì a mezzanotte UTC.
+    # Questo assicura che il ping avvenga almeno due volte a settimana.
+    - cron: '0 0 * * 1,4'
+  workflow_dispatch: # Permette di eseguire l'azione manualmente per test
+
+jobs:
+  ping_taxinav_database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Esecuzione della richiesta API a Supabase (TAXINAV)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # IMPORTANTE: Sostituisci 'TABELLA_ESISTENTE' con il nome di una tua 
+          # tabella ESISTENTE e leggera nel progetto TAXINAV (es. 'users', 'logs', ecc.).
+          TABELLA_DA_PINGARE="keep_alive_log" 
+          API_ENDPOINT="${{ secrets.SUPABASE_URL }}/rest/v1/${TABELLA_DA_PINGARE}?select=count"
+          
+          # Esegue una richiesta GET leggera per simulare l'attività
+          curl -s -X GET "$API_ENDPOINT" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json"
+          
+          echo "Ping inviato al progetto TAXINAV."
